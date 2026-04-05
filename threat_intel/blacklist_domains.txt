@@ -1,0 +1,13 @@
+# Known phishing / malicious domains blacklist
+# Add one domain per line. Lines starting with # are comments.
+# Sources: PhishTank, OpenPhish, abuse.ch, community submissions.
+
+# Example entries — replace/extend with real threat intel feeds
+evil-paypal.com
+paypal-secure-login.com
+apple-id-verify.net
+microsoft-account-alert.com
+amazon-prime-renewal.net
+netflix-billing-update.com
+irs-gov-refund.com
+fedex-delivery-notification.net

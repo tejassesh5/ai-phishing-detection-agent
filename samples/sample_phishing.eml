@@ -1,0 +1,23 @@
+From: "PayPal Security" <noreply@paypa1-secure.com>
+To: victim@example.com
+Subject: URGENT: Your account has been suspended - Verify Now!
+Date: Mon, 1 Jan 2024 10:00:00 +0000
+Message-ID: <fake123@paypa1-secure.com>
+Reply-To: collect@evil-phisher.ru
+MIME-Version: 1.0
+Content-Type: text/html; charset=UTF-8
+
+<html>
+<body>
+<p>Dear Valued Customer,</p>
+<p>We have detected <strong>unusual activity</strong> on your PayPal account.
+Your account has been <strong>temporarily suspended</strong>.</p>
+<p>You must verify your identity <strong>immediately</strong> to restore access
+or your account will be permanently closed within 24 hours.</p>
+<p>Click here to verify: <a href="http://paypa1-secure.com/login/verify?ref=12345">
+http://paypa1-secure.com/login/verify</a></p>
+<p>You can also check your status at:
+<a href="http://bit.ly/pp-verify-2024">http://bit.ly/pp-verify-2024</a></p>
+<p>PayPal Security Team</p>
+</body>
+</html>

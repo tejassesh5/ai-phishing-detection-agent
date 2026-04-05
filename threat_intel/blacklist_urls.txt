@@ -1,0 +1,6 @@
+# Known phishing URLs blacklist
+# Add one full URL per line. Lines starting with # are comments.
+
+# Example entries — replace/extend with real threat intel feeds
+http://evil-paypal.com/login
+http://paypal-secure-login.com/verify
