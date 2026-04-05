@@ -63,15 +63,26 @@ def is_typosquat(domain: str, brand_list: list[str] | None = None) -> tuple[bool
     ext    = tldextract.extract(domain)
     d_name = normalize_domain(ext.domain)
 
+    original_name = ext.domain.lower()
+
     for brand in brands:
         b_norm = normalize_domain(brand)
         dist   = levenshtein(d_name, b_norm)
-        # Exact substring or close edit distance
+
+        # Number/char substitution attack: normalized form matches brand but original doesn't
+        # e.g. paypa1.com → normalizes to paypal but original ≠ paypal
+        if d_name == b_norm and original_name != b_norm:
+            return True, brand
+
+        # Substring trick: e.g. "paypal-secure" contains "paypal"
         if b_norm in d_name or d_name in b_norm:
-            if d_name != b_norm:           # e.g. "paypal-secure" contains "paypal"
+            if d_name != b_norm:
                 return True, brand
+
+        # Close edit distance: e.g. "paaypal" (1-2 char off)
         if 1 <= dist <= 2 and len(b_norm) >= 5:
             return True, brand
+
     return False, ""
 
 
