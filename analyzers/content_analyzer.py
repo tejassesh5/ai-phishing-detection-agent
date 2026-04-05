@@ -76,7 +76,8 @@ Body:
             config=types.GenerateContentConfig(
                 system_instruction=_SYSTEM_PROMPT,
                 temperature=0.1,
-                max_output_tokens=512,
+                max_output_tokens=2048,
+                response_mime_type="application/json",
             ),
         )
         raw_text = response.text.strip()
