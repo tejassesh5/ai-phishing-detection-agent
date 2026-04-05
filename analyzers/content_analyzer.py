@@ -96,10 +96,21 @@ Body:
             "summary": "Analysis inconclusive due to parsing error.",
         }
     except Exception as e:
+        err_str = str(e)
+        if "429" in err_str or "RESOURCE_EXHAUSTED" in err_str:
+            # Extract retry delay if present
+            import re as _re
+            delay = _re.search(r"retry in (\d+)", err_str)
+            hint = f"retry in {delay.group(1)}s" if delay else "try again shortly"
+            msg = f"AI quota limit reached ({hint}) — run with --no-ai to skip"
+        elif "GEMINI_API_KEY" in err_str or "API_KEY" in err_str:
+            msg = "GEMINI_API_KEY not set — add it to .env or run with --no-ai"
+        else:
+            msg = f"AI unavailable: {err_str[:120]}"
         result = {
             "phishing_score": 0,
             "verdict": "safe",
-            "indicators": [f"AI analysis unavailable: {e}"],
+            "indicators": [msg],
             "impersonated_brand": None,
             "credential_harvesting": False,
             "urgency_tactics": False,

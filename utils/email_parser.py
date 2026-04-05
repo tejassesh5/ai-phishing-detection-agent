@@ -18,8 +18,74 @@ def parse_eml_file(path: str) -> dict:
 
 
 def parse_eml_string(raw: str) -> dict:
-    """Parse a raw email string."""
-    return _parse_message(message_from_string(raw, policy=email.policy.default))
+    """Parse a raw email string. Falls back to Gmail/Outlook web paste format if headers missing."""
+    result = _parse_message(message_from_string(raw, policy=email.policy.default))
+    # If standard parsing missed key headers, try informal paste fallback
+    if not result["from_addr"] and not result["subject"]:
+        result = _parse_informal(raw, result)
+    return result
+
+
+def _parse_informal(raw: str, base: dict) -> dict:
+    """
+    Fallback parser for emails pasted from Gmail/Outlook web UI.
+    Extracts From, To, Reply-To, Subject, Date using regex heuristics.
+    """
+    import re
+
+    text = raw.strip()
+    lines = text.splitlines()
+
+    def find(pattern):
+        for line in lines:
+            m = re.search(pattern, line, re.IGNORECASE)
+            if m:
+                return m.group(1).strip()
+        return ""
+
+    # Subject — first non-empty line OR explicit "Subject:" label
+    subject = find(r"^Subject\s*[:\-]\s*(.+)")
+    if not subject and lines:
+        subject = lines[0].strip()
+
+    # From — "Name <email>" pattern anywhere in first 20 lines
+    from_name, from_addr = "", ""
+    for line in lines[:20]:
+        m = re.search(r'([^<\n]+)<([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})>', line)
+        if m:
+            from_name = m.group(1).strip()
+            from_addr = m.group(2).strip().lower()
+            break
+    if not from_addr:
+        m = re.search(r'\b([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\b', "\n".join(lines[:20]))
+        if m:
+            from_addr = m.group(1).lower()
+
+    # Reply-To
+    reply_to = find(r"^Reply-To\s*[:\-]\s*(.+)")
+    _, reply_to_addr = parseaddr(reply_to)
+
+    # To
+    to = find(r"^To\s*[:\-]\s*(.+)")
+
+    # Date — look for date-like strings
+    date = find(r"((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4}.{0,30}(?:AM|PM|[+-]\d{4})?)")
+    if not date:
+        date = find(r"\d{1,2}/\d{1,2}/\d{2,4}")
+
+    # Body = everything after the first blank line following a header-like section
+    body = "\n".join(lines)
+
+    base.update({
+        "from_name": from_name or base["from_name"],
+        "from_addr": from_addr or base["from_addr"],
+        "to":        to or base["to"],
+        "reply_to":  reply_to_addr.lower() if reply_to_addr else base["reply_to"],
+        "subject":   subject or base["subject"],
+        "date":      date or base["date"],
+        "body_plain": body,
+    })
+    return base
 
 
 def _parse_message(msg) -> dict:
