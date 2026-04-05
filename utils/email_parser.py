@@ -4,6 +4,7 @@ Parse raw .eml files or email strings into a structured dict consumed by analyze
 
 import email
 import email.policy
+import re
 from email import message_from_string, message_from_bytes
 from email.utils import parseaddr
 from typing import Optional
@@ -20,8 +21,10 @@ def parse_eml_file(path: str) -> dict:
 def parse_eml_string(raw: str) -> dict:
     """Parse a raw email string. Falls back to Gmail/Outlook web paste format if headers missing."""
     result = _parse_message(message_from_string(raw, policy=email.policy.default))
-    # If standard parsing missed key headers, try informal paste fallback
-    if not result["from_addr"] and not result["subject"]:
+    # If standard parsing missed key headers or got a non-email from_addr, try fallback
+    _email_re = re.compile(r'^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$')
+    has_valid_from = bool(result["from_addr"] and _email_re.match(result["from_addr"]))
+    if not has_valid_from or not result["subject"]:
         result = _parse_informal(raw, result)
     return result
 
@@ -48,12 +51,19 @@ def _parse_informal(raw: str, base: dict) -> dict:
     if not subject and lines:
         subject = lines[0].strip()
 
-    # From — "Name <email>" pattern anywhere in first 20 lines
+    # From — handles "Name <email>", "Name [email]", bare email
     from_name, from_addr = "", ""
     for line in lines[:20]:
-        m = re.search(r'([^<\n]+)<([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})>', line)
+        # angle brackets: Name <email>
+        m = re.search(r'([^<\n]*)<([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})>', line)
         if m:
-            from_name = m.group(1).strip()
+            from_name = m.group(1).strip(" \t:\"'")
+            from_addr = m.group(2).strip().lower()
+            break
+        # square brackets: Name [email]
+        m = re.search(r'([^\[\n]*)\[([a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})\]', line)
+        if m:
+            from_name = m.group(1).strip(" \t:\"'")
             from_addr = m.group(2).strip().lower()
             break
     if not from_addr:

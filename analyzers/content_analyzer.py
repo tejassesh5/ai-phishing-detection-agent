@@ -107,15 +107,10 @@ Body:
             msg = "GEMINI_API_KEY not set — add it to .env or run with --no-ai"
         else:
             msg = f"AI unavailable: {err_str[:120]}"
-        result = {
-            "phishing_score": 0,
-            "verdict": "safe",
-            "indicators": [msg],
-            "impersonated_brand": None,
-            "credential_harvesting": False,
-            "urgency_tactics": False,
-            "summary": "AI analysis could not be completed.",
-        }
+        # Fall back to keyword analysis so content score isn't zero
+        fallback = _keyword_analysis(parsed_email)
+        fallback["indicators"].insert(0, msg)
+        result = fallback
 
     score = int(result.get("phishing_score", 0))
     flags = []
@@ -130,6 +125,78 @@ Body:
         flags.append(f"AI: {ind}")
 
     return {"score": score, "flags": flags, "details": result}
+
+
+def _keyword_analysis(parsed_email: dict) -> dict:
+    """
+    Rule-based keyword fallback when AI is unavailable.
+    Scores email body against known phishing pattern categories.
+    """
+    body = parsed_email.get("body_plain", "") or _strip_html(parsed_email.get("body_html", ""))
+    subject = parsed_email.get("subject", "")
+    text = (subject + " " + body).lower()
+
+    score = 0
+    indicators = []
+    credential_harvesting = False
+    urgency_tactics = False
+    impersonated_brand = None
+
+    _PATTERNS = [
+        # (regex, label, points, flags...)
+        (r"verify.{0,30}(account|identity|details|information)", "Credential verification request", 20, "cred"),
+        (r"confirm.{0,30}(account|banking|password|details|card)", "Account confirmation request", 20, "cred"),
+        (r"(banking|account|card|password).{0,30}(details|number|information).{0,30}(below|here|link|click)", "Sensitive info submission request", 25, "cred"),
+        (r"(click|follow).{0,20}(link|here|below).{0,30}(verify|confirm|update|restore|secure)", "Phishing call-to-action link", 20, "cred"),
+        (r"(account|card).{0,20}(suspend|terminat|lock|disabl|restrict)", "Account suspension threat", 20, "urgency"),
+        (r"(within|in).{0,10}(24|48|12|72).{0,10}(hours?|hrs?)", "Tight deadline pressure", 15, "urgency"),
+        (r"(immediate|urgent|mandatory|must).{0,20}(action|verify|confirm|update)", "Urgency language", 15, "urgency"),
+        (r"identity theft|unauthorized.{0,20}(access|transaction|activity)", "Identity theft / fraud claim", 15, "urgency"),
+        (r"(unusual|suspicious|unauthorized).{0,20}(activity|sign.in|login|access)", "Suspicious activity claim", 15, "urgency"),
+        (r"temporary suspension|permanent(ly)? (close|suspend|terminat)", "Account closure threat", 20, "urgency"),
+        (r"(win|winner|won|prize|reward|congratulation).{0,30}(click|claim|collect|enter)", "Prize/lottery lure", 20),
+        (r"(free|no cost).{0,20}(gift|iphone|cash|money|reward)", "Free gift lure", 15),
+        (r"(nigerian?|prince|inheritance|million dollar|wire transfer)", "Advance-fee fraud (419 scam)", 25),
+        (r"social security|ssn|date of birth|mother.{0,10}maiden", "PII harvesting request", 30, "cred"),
+        (r"(dear (customer|user|member|valued|client)|hello user)", "Generic impersonal greeting", 10),
+    ]
+
+    _BRAND_PATTERNS = [
+        ("paypal", r"paypal"), ("apple", r"apple\s*(id|account|support)"),
+        ("microsoft", r"microsoft|outlook|office\s*365"),
+        ("amazon", r"amazon|aws"), ("netflix", r"netflix"),
+        ("chase", r"chase\s*(bank)?"), ("google", r"google"),
+        ("irs", r"\birs\b|internal revenue"), ("fedex", r"fedex"),
+        ("usps", r"\busps\b|postal service"),
+    ]
+
+    for pattern, label, points, *flags in _PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            indicators.append(label)
+            score += points
+            if "cred" in flags:
+                credential_harvesting = True
+            if "urgency" in flags:
+                urgency_tactics = True
+
+    for brand, pattern in _BRAND_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            impersonated_brand = brand
+            break
+
+    score = min(score, 100)
+    verdict = "phishing" if score >= 66 else "suspicious" if score >= 31 else "safe"
+    summary = f"Keyword analysis: {len(indicators)} phishing pattern(s) detected." if indicators else "No phishing keywords detected."
+
+    return {
+        "phishing_score": score,
+        "verdict": verdict,
+        "indicators": indicators,
+        "impersonated_brand": impersonated_brand,
+        "credential_harvesting": credential_harvesting,
+        "urgency_tactics": urgency_tactics,
+        "summary": summary,
+    }
 
 
 def _strip_html(html: str) -> str:
